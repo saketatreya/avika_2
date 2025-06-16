@@ -1,7 +1,6 @@
 import os
 import json
 from typing import List, Dict, Optional, Tuple
-from dotenv import load_dotenv
 import google.generativeai as genai
 from rich.console import Console
 from rich.panel import Panel
@@ -9,11 +8,8 @@ from rich.markdown import Markdown
 import typer
 from questionnaire import Questionnaire, Question, Category
 
-# Load environment variables
-load_dotenv()
-
-# Initialize Gemini API
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+# The API key is now configured in the main app.py from Streamlit Secrets
+# This makes the chatbot module reusable and independent of how secrets are loaded.
 model = genai.GenerativeModel('models/gemini-2.5-flash-preview-05-20')
 
 # Initialize console for rich output
@@ -378,12 +374,6 @@ Return ONLY the message.
 
 def main():
     """Main entry point."""
-    if not os.getenv("GOOGLE_API_KEY"):
-        console.print("[red]Error: GOOGLE_API_KEY environment variable not set.[/red]")
-        console.print("Please create a .env file with your Google API key:")
-        console.print("GOOGLE_API_KEY=your_api_key_here")
-        return
-    
     chatbot = QuestionnaireChatbot()
     chatbot.chat()
 

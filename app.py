@@ -1,7 +1,6 @@
 import os
 import json
 import streamlit as st
-from dotenv import load_dotenv
 import google.generativeai as genai
 from chatbot import QuestionnaireChatbot, Category
 import time
@@ -10,9 +9,20 @@ import pandas as pd
 import plotly.express as px
 from streamlit_chat import message
 
+# Configure the Gemini API key from Streamlit Secrets
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    if not api_key:
+        st.error("🛑 GOOGLE_API_KEY secret is not set. Please add it to your Streamlit Cloud app secrets.")
+        st.stop()
+    genai.configure(api_key=api_key)
+except KeyError:
+    st.error("🛑 GOOGLE_API_KEY secret not found. Please add it to your Streamlit Cloud app secrets.")
+    st.stop()
+
 # Load environment variables
-load_dotenv()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+# load_dotenv() - This is no longer needed for cloud deployment
+# genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 model = genai.GenerativeModel('models/gemini-2.5-flash-preview-05-20')
 
 # Initialize session state

@@ -1,0 +1,7 @@
+google-generativeai
+streamlit
+streamlit-chat
+pandas
+plotly
+rich
+typer 
