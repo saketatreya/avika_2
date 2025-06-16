@@ -8,6 +8,7 @@ from rich.markdown import Markdown
 import typer
 from questionnaire import Questionnaire, Question, Category
 import logging
+import time
 
 # The API key is now configured in the main app.py from Streamlit Secrets
 # This makes the chatbot module reusable and independent of how secrets are loaded.
@@ -17,8 +18,17 @@ model = genai.GenerativeModel('models/gemini-2.5-flash-preview-05-20')
 # console = Console() - This is not needed for the deployed app
 logging.basicConfig(level=logging.INFO)
 
+# --- CONSOLE DEBUGGING ---
+def log_console(message: str):
+    """Prints a message to the console with a timestamp for debugging."""
+    timestamp = time.strftime("%H:%M:%S")
+    print(f"[AVIKA-DEBUG | {timestamp}] {message}")
+
+log_console("Chatbot module loaded.")
+
 class QuestionnaireChatbot:
     def __init__(self):
+        log_console("QuestionnaireChatbot class is being initialized.")
         self.questionnaire = Questionnaire()
         self.conversation_history: List[Dict[str, str]] = []
         self.system_prompt = """
@@ -263,6 +273,7 @@ Return ONLY the combined prompt.
         3. If not, or if no questions were pursued, checks against all unanswered questions.
         4. Sets up a follow-up prompt if the user's reply was vague on a pursued topic.
         """
+        log_console(f"Processing user reply: '{user_input}'")
         self.conversation_history.append({"role": "user", "content": user_input})
         answered_qids = {}
 
@@ -292,8 +303,11 @@ Return ONLY the combined prompt.
         if not answered_qids:
             self.pending_followup = None  # User changed topic, so clear any pending follow-up
             all_unanswered_analysis = self.analyze_all_unanswered(user_input)
+            log_console(f"Opportunistic analysis found answers: {all_unanswered_analysis}")
             for qid, ans in all_unanswered_analysis.items():
                 answered_qids[qid] = ans
+            
+            log_console(f"Final answers for this turn: {answered_qids}")
 
         return answered_qids
 
@@ -301,6 +315,7 @@ Return ONLY the combined prompt.
         """
         Generate a short, conversational prompt for a group of questions, including conversation context.
         """
+        log_console(f"Generating next prompt for group of {len(group)} questions.")
         conversation_context = self.conversation_history[-6:]
         prompt = f"""
 You are a warm, conversational mental health chatbot. Your primary goal is to listen, understand, and make the user feel heard.
@@ -314,15 +329,18 @@ Be empapthetic in your response, and consider the message history. If appropriat
 Combine the reflection and the next question into a single, natural, and supportive message. Do NOT list the questions. Use simple, everyday language. Do not sound robotic.
 Return ONLY the message.
 """
+        log_console(f"Sending prompt to Gemini: {prompt[:150]}...")
+        
         try:
             response = model.generate_content(prompt)
             error_msg = self._check_response_for_errors(response)
             if error_msg:
                 logging.error(error_msg)
                 raise Exception(error_msg) # Raise to be caught by the main loop
+            log_console(f"Received text from Gemini: '{response.text[:50]}...'")
             return response.text.strip()
         except Exception as e:
-            logging.error(f"Error generating next prompt: {e}")
+            log_console(f"---! EXCEPTION IN get_next_prompt !---")
             raise e
 
     def _generate_response(self, user_input: str, relevant_questions: List[Tuple[Question, float]]) -> str:
@@ -332,6 +350,7 @@ Return ONLY the message.
         2. Otherwise, get the next group of questions and generate a new, simple prompt.
         3. If all questions are answered, give a closing message.
         """
+        log_console("Generating chatbot response...")
         # If a follow-up for a vague answer is pending, use that.
         if self.pending_followup:
             response = self.pending_followup
@@ -346,6 +365,7 @@ Return ONLY the message.
                 response = self.get_next_prompt(next_group)
         
         self.conversation_history.append({"role": "assistant", "content": response})
+        log_console(f"Generated response: '{response[:50]}...'")
         return response
 
     def chat(self):

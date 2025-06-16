@@ -8,6 +8,15 @@ from typing import Dict, List, Optional
 import pandas as pd
 import plotly.express as px
 from streamlit_chat import message
+import traceback
+
+# --- CONSOLE DEBUGGING ---
+def log_console(message: str):
+    """Prints a message to the console with a timestamp for debugging."""
+    timestamp = time.strftime("%H:%M:%S")
+    print(f"[AVIKA-DEBUG | {timestamp}] {message}")
+
+log_console("App script execution started.")
 
 # Configure the Gemini API key from Streamlit Secrets
 try:
@@ -27,6 +36,7 @@ model = genai.GenerativeModel('models/gemini-2.5-flash-preview-05-20')
 
 # Initialize session state
 if 'chatbot' not in st.session_state:
+    log_console("Initializing new Chatbot instance.")
     st.session_state.chatbot = QuestionnaireChatbot()
 if 'messages' not in st.session_state:
     st.session_state.messages = []
@@ -284,33 +294,40 @@ def handle_user_message(user_message: str):
     """
     Appends a user message to the chat, gets a bot response, and updates state.
     """
+    log_console("--- New User Message ---")
     if not user_message:
+        log_console("User message is empty. Aborting.")
         return
 
     st.session_state.messages.append({"role": "user", "content": user_message})
-    log_debug(f"User message: {user_message}")
+    log_console(f"Appended user message: '{user_message}'")
     
     thinking_placeholder = st.empty()
     with thinking_placeholder.container():
         show_thinking_indicator()
     
     try:
-        # Process the user's reply to fill in the questionnaire
+        log_console("Calling chatbot.process_user_reply...")
         answers = st.session_state.chatbot.process_user_reply(user_message)
+        log_console(f"Received answers from process_user_reply: {answers}")
         for qid, answer in answers.items():
             st.session_state.chatbot.questionnaire.current_answers[qid] = {'answer': answer, 'source': 'avika'}
         
-        # Now, generate a context-aware response using the full conversation history
+        log_console("Calling chatbot._generate_response...")
         response = st.session_state.chatbot._generate_response(user_message, [])
+        log_console(f"Received response from _generate_response: '{response[:50]}...'")
         
         st.session_state.messages.append({"role": "assistant", "content": response})
     
     except Exception as e:
-        error_message = f"I'm having trouble connecting to the AI service right now. Please check if the API key is configured correctly in your Streamlit secrets. \n\n**Details:** {str(e)}"
+        log_console("---! EXCEPTION CAUGHT !---")
+        tb_str = traceback.format_exc()
+        log_console(f"An exception occurred in handle_user_message: {e}\n{tb_str}")
+        error_message = f"I'm sorry, I encountered a technical issue. Please check the console logs for details. \n\n**Error:** {str(e)}"
         st.session_state.messages.append({"role": "assistant", "content": error_message})
     
     finally:
-        # Always clean up and rerun
+        log_console("Cleaning up and rerunning.")
         thinking_placeholder.empty()
         st.session_state.pending_simulated_message = None
         st.session_state.sim_type_to_generate = None
