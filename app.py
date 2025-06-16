@@ -297,7 +297,6 @@ def handle_user_message(user_message: str):
     try:
         # Process the user's reply to fill in the questionnaire
         answers = st.session_state.chatbot.process_user_reply(user_message)
-        log_debug(f"Answers from process_user_reply: {answers}")
         for qid, answer in answers.items():
             st.session_state.chatbot.questionnaire.current_answers[qid] = {'answer': answer, 'source': 'avika'}
         
@@ -305,17 +304,17 @@ def handle_user_message(user_message: str):
         response = st.session_state.chatbot._generate_response(user_message, [])
         
         st.session_state.messages.append({"role": "assistant", "content": response})
-        thinking_placeholder.empty()
     
     except Exception as e:
-        thinking_placeholder.empty()
-        log_debug(f"Error in handle_user_message: {e}")
-        st.session_state.messages.append({"role": "assistant", "content": "Sorry, I encountered an error. Please try again."})
+        error_message = f"I'm having trouble connecting to the AI service right now. Please check if the API key is configured correctly in your Streamlit secrets. \n\n**Details:** {str(e)}"
+        st.session_state.messages.append({"role": "assistant", "content": error_message})
     
-    # Clean up state and rerun
-    st.session_state.pending_simulated_message = None
-    st.session_state.sim_type_to_generate = None
-    st.rerun()
+    finally:
+        # Always clean up and rerun
+        thinking_placeholder.empty()
+        st.session_state.pending_simulated_message = None
+        st.session_state.sim_type_to_generate = None
+        st.rerun()
 
 def main():
     st.set_page_config(

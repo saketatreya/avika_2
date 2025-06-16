@@ -7,13 +7,15 @@ from rich.panel import Panel
 from rich.markdown import Markdown
 import typer
 from questionnaire import Questionnaire, Question, Category
+import logging
 
 # The API key is now configured in the main app.py from Streamlit Secrets
 # This makes the chatbot module reusable and independent of how secrets are loaded.
 model = genai.GenerativeModel('models/gemini-2.5-flash-preview-05-20')
 
 # Initialize console for rich output
-console = Console()
+# console = Console() - This is not needed for the deployed app
+logging.basicConfig(level=logging.INFO)
 
 class QuestionnaireChatbot:
     def __init__(self):
@@ -81,9 +83,25 @@ Consider the context and implications of their words carefully."""
             if answer in ['A', 'B', 'C', 'D']:
                 return answer
         except Exception as e:
-            console.print(f"[red]Error analyzing response: {e}[/red]")
+            logging.error(f"Error analyzing response: {e}")
         
         return None
+
+    def _check_response_for_errors(self, response) -> Optional[str]:
+        """Checks a Gemini response for block reasons or other errors."""
+        try:
+            # This will raise a ValueError if the response was blocked.
+            _ = response.text
+            return None
+        except ValueError as e:
+            # If the response was blocked, response.prompt_feedback will be set.
+            if response.prompt_feedback.block_reason:
+                reasons = [f"- {r.name}" for r in response.prompt_feedback.safety_ratings]
+                return f"My apologies, I cannot respond to that. The conversation was flagged for the following safety reasons:\n" + "\n".join(reasons)
+            else:
+                return f"An unexpected error occurred with the AI response: {e}"
+        except Exception as e:
+            return f"A critical error occurred while processing the response: {e}"
 
     def analyze_single_question(self, user_input: str, question) -> Optional[str]:
         """
@@ -103,11 +121,19 @@ If the user's most recent reply clearly answers this question (based on the conv
 """
         try:
             response = model.generate_content(analysis_prompt)
+            error_msg = self._check_response_for_errors(response)
+            if error_msg:
+                logging.error(error_msg)
+                # We don't return the error to the user here, just fail to find an answer
+                return None
+            
             answer = response.text.strip().upper()
             if answer in ['A', 'B', 'C', 'D']:
                 return answer
         except Exception as e:
-            console.print(f"[red]Error analyzing single question: {e}[/red]")
+            logging.error(f"Error analyzing single question: {e}")
+            # Re-raise the exception to be caught by the main app loop
+            raise e
         return None
 
     def analyze_all_unanswered(self, user_input: str) -> dict:
@@ -136,6 +162,11 @@ Return your answer as a JSON object mapping question numbers to option letters o
 """
         try:
             response = model.generate_content(prompt)
+            error_msg = self._check_response_for_errors(response)
+            if error_msg:
+                logging.error(error_msg)
+                return {} # Return empty dict on error
+            
             import json as _json
             text = response.text.strip()
             import re
@@ -145,8 +176,8 @@ Return your answer as a JSON object mapping question numbers to option letters o
             answers = _json.loads(text)
             return {int(k): v for k, v in answers.items() if v and v in ['A','B','C','D']}
         except Exception as e:
-            console.print(f"[red]Error in analyze_all_unanswered: {e}[/red]")
-            return {}
+            logging.error(f"Error in analyze_all_unanswered: {e}")
+            raise e
 
     def get_next_unanswered_question(self) -> Optional[Question]:
         """Return the next unanswered question, or None if all are answered."""
@@ -177,10 +208,15 @@ Return ONLY the follow-up message.
 """
         try:
             response = model.generate_content(prompt)
+            error_msg = self._check_response_for_errors(response)
+            if error_msg:
+                logging.error(error_msg)
+                # Provide a safe, generic follow-up
+                return "Could you tell me a bit more about that? It's okay if you'd rather not."
             return response.text.strip()
         except Exception as e:
-            console.print(f"[red]Error generating follow-up: {e}[/red]")
-            return "Could you share a bit more about that? (If you'd rather not answer, that's okay.)"
+            logging.error(f"Error generating follow-up: {e}")
+            raise e
 
     def generate_multi_question_prompt(self, questions):
         """
@@ -198,7 +234,7 @@ Return ONLY the combined prompt.
             response = model.generate_content(prompt)
             return response.text.strip()
         except Exception as e:
-            console.print(f"[red]Error generating multi-question prompt: {e}[/red]")
+            logging.error(f"Error generating multi-question prompt: {e}")
             return "Could you tell me a bit about how you've been feeling in general lately?"
 
     def get_next_unanswered_group(self):
@@ -280,9 +316,14 @@ Return ONLY the message.
 """
         try:
             response = model.generate_content(prompt)
+            error_msg = self._check_response_for_errors(response)
+            if error_msg:
+                logging.error(error_msg)
+                raise Exception(error_msg) # Raise to be caught by the main loop
             return response.text.strip()
         except Exception as e:
-            return "Could you tell me a bit about how you've been feeling and your daily routine?"
+            logging.error(f"Error generating next prompt: {e}")
+            raise e
 
     def _generate_response(self, user_input: str, relevant_questions: List[Tuple[Question, float]]) -> str:
         """
@@ -309,7 +350,7 @@ Return ONLY the message.
 
     def chat(self):
         """Main chat loop."""
-        console.print(Panel.fit(
+        logging.info(Panel.fit(
             Markdown("# Mental Health Support Chat\n\nI'm here to chat and support you. How are you doing today?"),
             style="bold blue"
         ))
@@ -338,39 +379,39 @@ Return ONLY the message.
                 response = self._generate_response(user_input, relevant_questions)
                 self.conversation_history.append({"role": "assistant", "content": response})
                 
-                console.print(Panel.fit(
+                logging.info(Panel.fit(
                     Markdown(response),
                     style="bold green"
                 ))
                 
                 # Check if all questions are answered
                 if self.questionnaire.get_completion_percentage() == 100:
-                    console.print("\n[bold yellow]Assessment complete! Thank you for chatting with me.[/bold yellow]")
+                    logging.info("\n[bold yellow]Assessment complete! Thank you for chatting with me.[/bold yellow]")
                     self._display_results()
                     break
                 
             except KeyboardInterrupt:
-                console.print("\n[bold yellow]Chat ended. Thank you for your time![/bold yellow]")
+                logging.info("\n[bold yellow]Chat ended. Thank you for your time![/bold yellow]")
                 break
             except Exception as e:
-                console.print(f"[red]An error occurred: {e}[/red]")
+                logging.error(f"[red]An error occurred: {e}[/red]")
                 continue
 
     def _display_results(self):
         """Display the assessment results."""
-        console.print("\n[bold]Assessment Results:[/bold]")
+        logging.info("\n[bold]Assessment Results:[/bold]")
         
         for category in Category:
             score = self.questionnaire.get_category_score(category)
-            console.print(f"\n{category.value}: {score:.1f}/4.0")
+            logging.info(f"\n{category.value}: {score:.1f}/4.0")
             
             # Get questions and answers for this category
             category_questions = [q for q in self.questionnaire.questions if q.category == category]
             for q in category_questions:
                 answer = self.questionnaire.current_answers[q.id]
                 if answer:
-                    console.print(f"  • {q.text}")
-                    console.print(f"    Answer: {answer} - {q.options[answer]}")
+                    logging.info(f"  • {q.text}")
+                    logging.info(f"    Answer: {answer} - {q.options[answer]}")
 
 def main():
     """Main entry point."""
