@@ -327,69 +327,59 @@ def handle_user_message(user_message: str):
         st.session_state.messages.append({"role": "assistant", "content": error_message})
     
     finally:
-        log_console("Cleaning up and rerunning.")
+        log_console("Cleaning up state.")
         thinking_placeholder.empty()
         st.session_state.pending_simulated_message = None
         st.session_state.sim_type_to_generate = None
-        st.rerun()
+
+def reset_chat():
+    """Resets the chat to its initial state."""
+    log_console("Resetting chat session.")
+    st.session_state.chatbot = QuestionnaireChatbot()
+    st.session_state.messages = []
+    st.session_state.debug_log = []
+    # Any other state that needs resetting can be added here
+    ensure_initial_avika_message()
+
+def get_conversation_text():
+    """Formats the conversation history into a plain text string."""
+    conversation_text = "Avika Chat Conversation\n"
+    conversation_text += "========================\n\n"
+    for msg in st.session_state.messages:
+        role = "You" if msg["role"] == "user" else "Avika"
+        conversation_text += f"{role}:\n{msg['content']}\n\n"
+    return conversation_text
 
 def main():
-    st.set_page_config(
-        page_title="Avika - Mental Health Assessment",
-        page_icon="🧠",
-        layout="wide"
-    )
-    # Custom CSS
-    st.markdown("""
-        <style>
-        .stApp {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 2rem;
-            padding-top: 1.2rem;
-            padding-bottom: 1.2rem;
-            padding-left: 1.2rem;
-        }
-        .stTabs [data-baseweb="tab"] {
-            height: 3rem;
-            white-space: pre-wrap;
-            background-color: #262730;
-            border-radius: 4px 4px 0 0;
-            gap: 1rem;
-            padding-top: 0.5rem;
-            padding-bottom: 0.5rem;
-            padding-left: 1.5rem;
-            padding-right: 1.5rem;
-            font-size: 1.1rem;
-        }
-        .stTabs [aria-selected="true"] {
-            background-color: #4CAF50;
-        }
-        .sim-btn-row {
-            display: flex;
-            gap: 1rem;
-            margin-top: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        .sim-btn-row button {
-            background: #23272f;
-            color: #fff;
-            border: none;
-            border-radius: 0.5rem;
-            padding: 0.6rem 1.2rem;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        .sim-btn-row button:hover {
-            background: #4CAF50;
-            color: #fff;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    st.title("🧠 Avika - Mental Health Assessment")
+    """Main function to run the Streamlit app."""
+    st.set_page_config(page_title="Avika Mental Health Chat", page_icon="🌿", layout="wide")
+
+    # --- Sidebar ---
+    with st.sidebar:
+        st.title("🌿 Avika Controls")
+        st.markdown("---")
+
+        if st.button("🔄 Reset Chat", use_container_width=True):
+            reset_chat()
+            st.rerun()
+
+        st.download_button(
+            label="📄 Export Conversation",
+            data=get_conversation_text(),
+            file_name="avika_conversation.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
+
+        st.markdown("---")
+        st.info("This is a conversational tool for mental well-being and not a replacement for professional medical advice.")
+        
+        # Dev tools toggle in sidebar
+        st.session_state.show_dev_tools = st.toggle("Show Dev Tools", value=st.session_state.show_dev_tools)
+
+
+    # --- Main Chat Interface ---
+    st.title("Avika | Mental Health Support Chat")
     st.markdown("""
         Welcome! I'm here to have a natural conversation about your well-being.
         I'll ask about different aspects of your life, but we'll keep it casual and supportive.
@@ -417,6 +407,7 @@ def main():
         user_input = st.chat_input("Type your message here...", key="chat_input", disabled=sim_in_progress)
         if user_input:
             handle_user_message(user_input)
+            st.rerun()
 
         # Simulation buttons below chat input
         st.markdown("<div class='sim-btn-row'>", unsafe_allow_html=True)
